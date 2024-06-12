@@ -231,7 +231,41 @@ int parsePipe(char* str, char** strpiped)
 	else { 
 		return 1; 
 	} 
-} 
+}
+
+// function for finding OR 
+int parseOR(char* str, char** strOR) 
+{ 
+	int i; 
+	for (i = 0; i < 2; i++) { 
+		strOR[i] = strsep(&str, "||"); 
+		if (strOR[i] == NULL) 
+			break; 
+	} 
+
+	if (strOR[1] == NULL) 
+		return 0; // returns zero if no pipe is found. 
+	else { 
+		return 1; 
+	} 
+}
+
+// function for finding AND 
+int parseOR(char* str, char** strAND) 
+{ 
+	int i; 
+	for (i = 0; i < 2; i++) { 
+		strAND[i] = strsep(&str, "&&"); 
+		if (strOR[i] == NULL) 
+			break; 
+	} 
+
+	if (strAND[1] == NULL) 
+		return 0; // returns zero if no pipe is found. 
+	else { 
+		return 1; 
+	} 
+}
 
 // function for parsing command words 
 void parseSpace(char* str, char** parsed) 
@@ -251,24 +285,38 @@ void parseSpace(char* str, char** parsed)
 int processString(char* str, char** parsed, char** parsedpipe) 
 { 
 
-	char* strpiped[2]; 
-	int piped = 0; 
+	char* strpiped[2];
+	char* strAnd[2];
+	char* strOr[2];
+	int piped = 0, and = 0, or = 0; 
 
 	piped = parsePipe(str, strpiped); 
+	and = parsePipe(str, strAND);
+	or = parsePipe(str, strOR);
 
 	if (piped) { 
 		parseSpace(strpiped[0], parsed); 
 		parseSpace(strpiped[1], parsedpipe); 
 
-	} else { 
-
-		parseSpace(str, parsed); 
-	} 
+	} else if (and) { 
+	        and = 2;
+	        parseSpace(strAnd[0], parsed); 
+		parseSpace(strAnd[1], parsedpipe); 
+		 
+	} else if (or) {
+	        or = 3;
+	        parseSpace(strOr[0], parsed); 
+		parseSpace(strOr[1], parsedpipe); 
+	        
+	} else {
+	        parseSpace(str, parsed);
+	}
 
 	if (ownCmdHandler(parsed)) 
 		return 0; 
 	else
-		return 1 + piped; 
+		return 1 + piped + and + or; 
+
 } 
 
 int main() 
@@ -300,6 +348,12 @@ int main()
 			execArgs(parsedArgs); 
 
 		if (execFlag == 2) 
+			execArgsPiped(parsedArgs, parsedArgsPiped); 
+			
+		if (execFlag == 3) //AND
+			execArgsPiped(parsedArgs, parsedArgsPiped);
+			
+		if (execFlag == 4) //OR
 			execArgsPiped(parsedArgs, parsedArgsPiped); 
 	} 
 	return 0; 
