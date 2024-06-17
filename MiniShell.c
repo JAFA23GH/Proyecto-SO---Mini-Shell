@@ -102,59 +102,142 @@ void execArgs(char** parsed)
 } 
 
 // Function where the piped system commands is executed 
-void execArgsPiped(char** parsed, char** parsedpipe) 
-{ 
-	// 0 is read end, 1 is write end 
-	int pipefd[2]; 
-	pid_t p1, p2; 
+void execArgsPiped(char** parsed, char** parsedpipe)
+{
+    // 0 is read end, 1 is write end
+    int pipefd[2];
+    pid_t p1, p2;
 
-	if (pipe(pipefd) < 0) { 
-		printf("\nPipe could not be initialized"); 
-		return; 
-	} 
-	p1 = fork(); 
-	if (p1 < 0) { 
-		printf("\nCould not fork"); 
-		return; 
-	} 
+    if (pipe(pipefd) < 0) {
+        perror("pipe");
+        return;
+    }
 
-	if (p1 == 0) { 
-		// Child 1 executing.. 
-		// It only needs to write at the write end 
-		close(pipefd[0]); 
-		dup2(pipefd[1], STDOUT_FILENO); 
-		close(pipefd[1]); 
+    p1 = fork();
+    if (p1 < 0) {
+        perror("fork");
+        return;
+    }
 
-		if (execvp(parsed[0], parsed) < 0) { 
-			printf("\nCould not execute command 1.."); 
-			exit(0); 
-		} 
-	} else { 
-		// Parent executing 
-		p2 = fork(); 
+    if (p1 == 0) {
+        // Child 1 executing..
+        // It only needs to write at the write end
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+        
+        if (execvp(parsed[0], parsed) < 0) {
+            perror("execvp");
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        // Parent executing
+        p2 = fork();
 
-		if (p2 < 0) { 
-			printf("\nCould not fork"); 
-			return; 
-		} 
+        if (p2 < 0) {
+            perror("fork");
+            return;
+        }
 
-		// Child 2 executing.. 
-		// It only needs to read at the read end 
-		if (p2 == 0) { 
-			close(pipefd[1]); 
-			dup2(pipefd[0], STDIN_FILENO); 
-			close(pipefd[0]); 
-			if (execvp(parsedpipe[0], parsedpipe) < 0) { 
-				printf("\nCould not execute command 2.."); 
-				exit(0); 
-			} 
-		} else { 
-			// parent executing, waiting for two children 
-			wait(NULL); 
-			wait(NULL); 
-		} 
-	} 
+        // Child 2 executing..
+        // It only needs to read at the read end
+        if (p2 == 0) {
+            close(pipefd[1]);
+            dup2(pipefd[0], STDIN_FILENO);
+            close(pipefd[0]);
+            
+            if (execvp(parsedpipe[0], parsedpipe) < 0) {
+                perror("execvp");
+                exit(EXIT_FAILURE);
+            }
+        } else {
+            // parent executing, waiting for two children
+            close(pipefd[0]);
+            close(pipefd[1]);
+
+            waitpid(p1, NULL, 0);
+            waitpid(p2, NULL, 0);
+        }
+    }
+}
+
+void execArgsAND(char** parsed, char** parsedAND) 
+{
+    pid_t pid;
+    int status;
+
+    pid = fork();
+
+    if (pid < 0) {
+        perror("fork failed");
+    }
+
+    if (pid == 0) {
+        // Child process
+        if (execvp(parsed[0], parsed) < 0) {
+            perror("execvp failed for the first command");
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        // Parent process
+        waitpid(pid, &status, 0);
+
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+            // The first command executed successfully
+            pid = fork();
+            if (pid < 0) {
+                perror("fork failed");
+            }
+            if (pid == 0) {
+                // Child process
+                if (execvp(parsedAND[0], parsedAND) < 0) {
+                    perror("execvp failed for the second command");
+                    exit(EXIT_FAILURE);
+                }
+            } else {
+                // Parent process
+                waitpid(pid, &status, 0);
+            }
+        } else {
+            // The first command failed
+            // fprintf(stderr, "The first command failed, so the second command will not be executed\n");
+        }
+    }  
 } 
+
+void execArgsOR(char** parsed, char** parsedOR) 
+{
+	pid_t pid;
+    int status;
+
+    pid = fork();
+
+    if (pid < 0) {
+        perror("fork failed");        
+    }
+
+    if (pid == 0) {
+        // Child process
+        if (execvp(parsed[0], parsed) < 0) {
+            perror("execvp failed for the first command");
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        // Parent process
+        waitpid(pid, &status, 0);
+
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+            // The first command executed successfully
+            // fprintf(stderr, "The first command executed successfully, so the second command will not be executed\n");
+        } else {
+			// fprintf(stderr, "The first command failed, so the second command will be executed\n"); 
+			if (execvp(parsedOR[0], parsedOR) < 0) {
+                perror("execvp failed for the second command");                
+            }                      
+        }
+    }    
+} 
+
 
 // Help command builtin 
 void openHelp() 
@@ -219,52 +302,35 @@ int ownCmdHandler(char** parsed)
 // function for finding pipe 
 int parsePipe(char* str, char** strpiped) 
 { 
-	int i; 
-	for (i = 0; i < 2; i++) { 
-		strpiped[i] = strsep(&str, "|"); 
-		if (strpiped[i] == NULL) 
-			break; 
-	} 
+	char delim[] = "|";
+	char *state = NULL;
+			
+	strpiped[0] = strtok_r(str, delim, &state);
 
-	if (strpiped[1] == NULL) 
-		return 0; // returns zero if no pipe is found. 
-	else { 
-		return 1; 
-	} 
-}
-
-// function for finding OR 
-int parseOR(char* str, char** strOR) 
-{ 
-	int i; 
-	for (i = 0; i < 2; i++) { 
-		strOR[i] = strsep(&str, "||"); 
-		if (strOR[i] == NULL) 
-			break; 
-	} 
-
-	if (strOR[1] == NULL) 
-		return 0; // returns zero if no pipe is found. 
-	else { 
-		return 1; 
-	} 
+	strpiped[1] = strtok_r(NULL, delim, &state); 		
 }
 
 // function for finding AND 
-int parseOR(char* str, char** strAND) 
+int parseAND(char* str, char** strAND) 
 { 
-	int i; 
-	for (i = 0; i < 2; i++) { 
-		strAND[i] = strsep(&str, "&&"); 
-		if (strOR[i] == NULL) 
-			break; 
-	} 
+	char delim[] = "&&";
+	char *state = NULL;
+			
+	strAND[0] = strtok_r(str, delim, &state);
 
-	if (strAND[1] == NULL) 
-		return 0; // returns zero if no pipe is found. 
-	else { 
-		return 1; 
-	} 
+	strAND[1] = strtok_r(NULL, delim, &state); 	
+}
+
+// function for finding OR 
+void parseOR(char* str, char** strOR) 
+{ 
+	char delim[] = "||";
+	char *state = NULL;
+			
+	strOR[0] = strtok_r(str, delim, &state);
+
+	strOR[1] = strtok_r(NULL, delim, &state);
+	
 }
 
 // function for parsing command words 
@@ -282,35 +348,105 @@ void parseSpace(char* str, char** parsed)
 	} 
 } 
 
-int processString(char* str, char** parsed, char** parsedpipe) 
+int check_operation(char *str) {
+    if (strstr(str, "||") != NULL) {
+        // printf("Double Pipe (OR)\n");
+		return 2;
+    } else if (strstr(str, "|") != NULL) {
+        // printf("Single Pipe\n");
+		return 1;
+    } else if (strstr(str, "&&") != NULL) {
+        // printf("AND\n");
+		return 3;
+    } else {
+        // printf("No Pipe\n");
+		return 0;
+    }
+
+	return 0;
+}
+
+int processString(char* str, char** parsed, char** parsedpipe, char** parsedAND, char** parsedOR) 
 { 
 
 	char* strpiped[2];
-	char* strAnd[2];
-	char* strOr[2];
+	char* strAND[2];
+	char* strOR[2];
 	int piped = 0, and = 0, or = 0; 
 
-	piped = parsePipe(str, strpiped); 
-	and = parsePipe(str, strAND);
-	or = parsePipe(str, strOR);
+	int op = 0; 
 
-	if (piped) { 
+	op = check_operation(str);		
+
+	switch (op)
+	{
+	case 1:
+		piped = 1;
+		parsePipe(str, strpiped);
 		parseSpace(strpiped[0], parsed); 
-		parseSpace(strpiped[1], parsedpipe); 
-
-	} else if (and) { 
-	        and = 2;
-	        parseSpace(strAnd[0], parsed); 
-		parseSpace(strAnd[1], parsedpipe); 
-		 
-	} else if (or) {
-	        or = 3;
-	        parseSpace(strOr[0], parsed); 
-		parseSpace(strOr[1], parsedpipe); 
-	        
-	} else {
-	        parseSpace(str, parsed);
+		parseSpace(strpiped[1], parsedpipe);
+		break;
+	case 2:
+		or = 2;
+		parseOR(str, strOR);		
+		parseSpace(strOR[0], parsed); 
+		parseSpace(strOR[1], parsedOR); 
+		break;
+	case 3:
+		and = 3;
+		parseAND(str, strAND);		
+		parseSpace(strAND[0], parsed); 
+		parseSpace(strAND[1], parsedAND);
+		break;
+	default:
+		parseSpace(str, parsed);
+		break;
 	}
+
+	// if (op == 1) { 
+	// 	piped = 1;
+	// 	printf("Es piped\n");
+	// 	parsePipe(str, strpiped);	
+	// 	printf("strpiped 0: %s\n", strpiped[0]);	
+	// 	printf("strpiped 1: %s\n", strpiped[1]);	
+	// 	parseSpace(strpiped[0], parsed); 
+	// 	parseSpace(strpiped[1], parsedpipe);
+	// 	for (int i = 0; i < 2; i++)
+	// 	{
+	// 		printf("parsed: %s\n", parsed[i]);
+	// 	}
+	// 	for (int i = 0; i < 2; i++)
+	// 	{
+	// 		printf("parsedAND: %s\n", parsedpipe[i]);
+	// 	} 
+
+	// } else if (op == 3) { 
+	// 	and = 3;
+	// 	printf("Es AND\n");
+	// 	parseAND(str, strAND);		
+	// 	// printf("strAND 0: %s\n", strAND[0]);	
+	// 	// printf("strAND 1: %s\n", strAND[1]);	
+	// 	parseSpace(strAND[0], parsed); 
+	// 	parseSpace(strAND[1], parsedAND);
+	// 	// for (int i = 0; i < 2; i++)
+	// 	// {
+	// 	// 	printf("parsed: %s\n", parsed[i]);
+	// 	// }
+	// 	// for (int i = 0; i < 2; i++)
+	// 	// {
+	// 	// 	printf("parsedAND: %s\n", parsedAND[i]);
+	// 	// }			 
+	// } else if (op == 2) {
+	// 	or = 2;
+	// 	printf("Es OR\n");
+	// 	parseOR(str, strOR);
+	// 	// printf("Es OR\n");
+	// 	parseSpace(strOR[0], parsed); 
+	// 	parseSpace(strOR[1], parsedOR); 
+	        
+	// } else {
+	// 	parseSpace(str, parsed);
+	// }
 
 	if (ownCmdHandler(parsed)) 
 		return 0; 
@@ -323,8 +459,8 @@ int main()
 { 
 	char inputString[MAXCOM], *parsedArgs[MAXLIST]; 
 	char* parsedArgsPiped[MAXLIST]; 
-	char* parsedArgsAnd[MAXLIST];
-	char* parsedArgsOr[MAXLIST];
+	char* parsedArgsAND[MAXLIST];
+	char* parsedArgsOR[MAXLIST];
 	
 	int execFlag = 0; 
 	init_shell(); 
@@ -337,25 +473,22 @@ int main()
 			continue; 
 		// process 
 		execFlag = processString(inputString, 
-		parsedArgs, parsedArgsPiped); 
+		parsedArgs, parsedArgsPiped, parsedArgsAND, parsedArgsOR); 
 		// execflag returns zero if there is no command 
 		// or it is a builtin command, 
-		// 1 if it is a simple command 
+		// 1 if it is a simple command. 
 		// 2 if it is including a pipe. 
 
 		// execute 
 		if (execFlag == 1) 
 			execArgs(parsedArgs); 
-
-		if (execFlag == 2) 
-			execArgsPiped(parsedArgs, parsedArgsPiped); 
-			
-		if (execFlag == 3) //AND
-			execArgsPiped(parsedArgs, parsedArgsPiped);
-			
-		if (execFlag == 4) //OR
-			execArgsPiped(parsedArgs, parsedArgsPiped); 
+		if (execFlag == 2) //Pipe
+			execArgsPiped(parsedArgs, parsedArgsPiped);			
+		if (execFlag == 3) //OR			
+			execArgsOR(parsedArgs, parsedArgsOR); 		
+		if (execFlag == 4) //AND		
+			execArgsAND(parsedArgs, parsedArgsAND);
 	} 
+
 	return 0; 
 } 
-
