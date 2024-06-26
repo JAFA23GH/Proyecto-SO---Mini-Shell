@@ -1,28 +1,29 @@
-// C Program to design a shell in Linux 
+//Proyecto #1 Mini-Shell
+//Juan Fernandes V-29966562
+//Freddy López V-21534219
+
 #include<stdio.h> 
 #include<string.h> 
 #include<stdlib.h> 
 #include<unistd.h> 
+#include<ctype.h>
 #include<sys/types.h> 
 #include<sys/wait.h> 
-/*
-#include<readline/readline.h> 
-#include<readline/history.h> */
 
-#define MAXCOM 1000 // max number of letters to be supported 
+#define MAXCOM 1000 // numero maximo de letras que se pueden secibir
 #define MAXLIST 100 // max number of commands to be supported 
 
-// Clearing the shell using escape sequences 
+// Limpiar el shell 
 #define clear() printf("\033[H\033[J") 
 
-// Greeting shell during startup 
+// Saludo de inicio 
 void init_shell() 
 { 
 	clear(); 
 	printf("\n\n\n\n******************"
 		"************************"); 
-	printf("\n\n\n\t****MY SHELL****"); 
-	printf("\n\n\t-USE AT YOUR OWN RISK-"); 
+	printf("\n\n\n\t****PROYECTO 1: MINI-SHELL****"); 
+	printf("\n\n\t-SISTEMAS OPERATIVOS-"); 
 	printf("\n\n\n\n*******************"
 		"***********************"); 
 	char* username = getenv("USER"); 
@@ -32,34 +33,34 @@ void init_shell()
 	clear(); 
 } 
 
-char *read_line(void)
+char *leer_linea(void)
 {
-	char *line = NULL;
+	char *linea = NULL;
 	size_t bufsize = 0;	
 
-	if (getline(&line, &bufsize, stdin) == -1) /* if getline fails */
+	if (getline(&linea, &bufsize, stdin) == -1) /* si getline falla */
 	{
-		if (feof(stdin)) /* test for the eof */
+		if (feof(stdin))
 		{
-			free(line); /* avoid memory leaks when ctrl + d */
-			exit(EXIT_SUCCESS); /* we recieved an eof */
+			free(linea); 
+			exit(EXIT_SUCCESS); 
 		}
 		else
 		{
-			free(line); /* avoid memory leaks when getline fails */
-			perror("error while reading the line from stdin");
+			free(linea); 
+			perror("error leyendo desde stdin");
 			exit(EXIT_FAILURE);
 		}
 	}
-	return (line);
+	return (linea);
 }
 
-//Function to take input 
-int takeInput(char* str) 
+//Funcion para tomar la entrada
+int tomar_input(char* str) 
 { 
 	char* buf; 
 
-	buf = read_line();
+	buf = leer_linea();
 	
 	buf[strcspn(buf, "\n")] = '\0'; 
 
@@ -72,39 +73,84 @@ int takeInput(char* str)
 	} 
 } 
 
-// Function to print Current Directory. 
-void printDir() 
+// Funcion para impimir el directorio actual
+void imprimir_dir() 
 { 
 	char cwd[1024]; 
 	getcwd(cwd, sizeof(cwd)); 
 	printf("\nDir: %s \n>>> ", cwd); 
 } 
 
-// Function where the system command is executed 
-void execArgs(char** parsed) 
+void abrir_ayuda() 
 { 
-	// Forking a child 
+	puts("\n***MINISHELL***"
+		"\nJuan Fernandes"
+		"\nFreddy Lopez"
+		"\nSistemas Operativos"
+        "\ncon"		
+		"\nManejo de Operador |"
+		"\nManejo de Operador &&"
+		"\nManejo de operador ||"); 
+	return; 
+} 
+
+// Funcion para ejecutar comandos propios
+int manejador_comandos_propios(char** parsed) 
+{ 
+	int NoComandoPropìo = 3, i, switchComandoPropio = 0; 
+	char* ListaComandosPropios[NoComandoPropìo]; 
+	char* username; 
+
+	ListaComandosPropios[0] = "salir"; 
+	ListaComandosPropios[1] = "cd"; 
+	ListaComandosPropios[2] = "help"; 	 
+
+	for (i = 0; i < NoComandoPropìo; i++) { 
+		if (strcmp(parsed[0], ListaComandosPropios[i]) == 0) { 
+			switchComandoPropio = i + 1; 
+			break; 
+		} 
+	} 
+
+	switch (switchComandoPropio) { 
+	case 1: 
+		printf("\n¡Hasta Luego!\n"); 
+		exit(0); 
+	case 2: 
+		chdir(parsed[1]); 
+		return 1; 
+	case 3: 
+		abrir_ayuda(); 
+		return 1; 	
+	default: 
+		break; 
+	} 
+
+	return 0; 
+} 
+
+// Funcion donde se ejcuta un comando
+void ejecutar_cmd(char** parsed) 
+{ 
 	pid_t pid = fork(); 
 
-	if (pid == -1) { 
-		printf("\nFailed forking child.."); 
+	if (pid < 0) { 
+		perror("fork"); 
 		return; 
 	} else if (pid == 0) { 
 		if (execvp(parsed[0], parsed) < 0) { 
-			printf("\nCould not execute command.."); 
+			perror("execvp");; 
 		} 
 		exit(0); 
-	} else { 
-		// waiting for child to terminate 
+	} else { 		
 		wait(NULL); 
 		return; 
 	} 
 } 
 
-// Function where the piped system commands is executed 
-void execArgsPiped(char** parsed, char** parsedpipe)
+// Fucnion donde se ejecutan comandos conectados por un pipe
+void ejecutar_pipe(char** parsed, char** parsedpipe)
 {
-    // 0 is read end, 1 is write end
     int pipefd[2];
     pid_t p1, p2;
 
@@ -119,9 +165,8 @@ void execArgsPiped(char** parsed, char** parsedpipe)
         return;
     }
 
-    if (p1 == 0) {
-        // Child 1 executing..
-        // It only needs to write at the write end
+    if (p1 == 0) {        
+        
         close(pipefd[0]);
         dup2(pipefd[1], STDOUT_FILENO);
         close(pipefd[1]);
@@ -131,16 +176,14 @@ void execArgsPiped(char** parsed, char** parsedpipe)
             exit(EXIT_FAILURE);
         }
     } else {
-        // Parent executing
+        
         p2 = fork();
 
         if (p2 < 0) {
             perror("fork");
             return;
         }
-
-        // Child 2 executing..
-        // It only needs to read at the read end
+        
         if (p2 == 0) {
             close(pipefd[1]);
             dup2(pipefd[0], STDIN_FILENO);
@@ -151,7 +194,7 @@ void execArgsPiped(char** parsed, char** parsedpipe)
                 exit(EXIT_FAILURE);
             }
         } else {
-            // parent executing, waiting for two children
+            
             close(pipefd[0]);
             close(pipefd[1]);
 
@@ -161,7 +204,8 @@ void execArgsPiped(char** parsed, char** parsedpipe)
     }
 }
 
-void execArgsAND(char** parsed, char** parsedAND) 
+// Funcion para ejecutar una linea de comando que tenga el operador &&
+void ejecutar_AND(char** parsed, char** parsedAND) 
 {
     pid_t pid;
     int status;
@@ -173,41 +217,46 @@ void execArgsAND(char** parsed, char** parsedAND)
     }
 
     if (pid == 0) {
-        // Child process
-        if (execvp(parsed[0], parsed) < 0) {
+        
+		if(manejador_comandos_propios(parsed) == 0){
+			if (execvp(parsed[0], parsed) < 0) {
             perror("execvp failed for the first command");
             exit(EXIT_FAILURE);
-        }
+        	}
+		}        
     } else {
-        // Parent process
+        
         waitpid(pid, &status, 0);
 
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-            // The first command executed successfully
+            // Primer comando ejecutado de forma exitosa
             pid = fork();
             if (pid < 0) {
                 perror("fork failed");
             }
             if (pid == 0) {
-                // Child process
-                if (execvp(parsedAND[0], parsedAND) < 0) {
+                
+				if (manejador_comandos_propios(parsedAND) == 0)
+				{
+					if (execvp(parsedAND[0], parsedAND) < 0) {
                     perror("execvp failed for the second command");
                     exit(EXIT_FAILURE);
-                }
+                	}
+				}                
             } else {
-                // Parent process
+                
                 waitpid(pid, &status, 0);
             }
         } else {
-            // The first command failed
-            // fprintf(stderr, "The first command failed, so the second command will not be executed\n");
+            // Fallo del primer comando           
         }
     }  
 } 
 
-void execArgsOR(char** parsed, char** parsedOR) 
+// Funcion para ejecutar una linea de comando que tenga el operador ||
+void ejecutar_OR(char** parsed, char** parsedOR) 
 {
-	pid_t pid;
+    pid_t pid;
     int status;
 
     pid = fork();
@@ -217,126 +266,69 @@ void execArgsOR(char** parsed, char** parsedOR)
     }
 
     if (pid == 0) {
-        // Child process
-        if (execvp(parsed[0], parsed) < 0) {
+        
+        if(manejador_comandos_propios(parsed) == 0){
+			if (execvp(parsed[0], parsed) < 0) {
             perror("execvp failed for the first command");
             exit(EXIT_FAILURE);
-        }
+        	}
+		} 
     } else {
-        // Parent process
+        
         waitpid(pid, &status, 0);
 
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-            // The first command executed successfully
-            // fprintf(stderr, "The first command executed successfully, so the second command will not be executed\n");
-        } else {
-			// fprintf(stderr, "The first command failed, so the second command will be executed\n"); 
-			if (execvp(parsedOR[0], parsedOR) < 0) {
-                perror("execvp failed for the second command");                
-            }                      
-        }
+            // Primer comando ejecutado de forma exitosa         
+        } else {			
+			if (manejador_comandos_propios(parsedOR) == 0)
+			{
+				if (execvp(parsedOR[0], parsedOR) < 0) {
+					perror("execvp failed for the second command"); 
+					exit(EXIT_FAILURE);              
+				}                      
+        	}
+		}		
     }    
 } 
 
-
-// Help command builtin 
-void openHelp() 
-{ 
-	puts("\n***WELCOME TO MY SHELL HELP***"
-		"\nCopyright @ Suprotik Dey"
-		"\n-Use the shell at your own risk..."
-		"\nList of Commands supported:"
-		"\n>cd"
-		"\n>ls"
-		"\n>exit"
-		"\n>all other general commands available in UNIX shell"
-		"\n>pipe handling"
-		"\n>improper space handling"); 
-
-	return; 
-} 
-
-// Function to execute builtin commands 
-int ownCmdHandler(char** parsed) 
-{ 
-	int NoOfOwnCmds = 4, i, switchOwnArg = 0; 
-	char* ListOfOwnCmds[NoOfOwnCmds]; 
-	char* username; 
-
-	ListOfOwnCmds[0] = "exit"; 
-	ListOfOwnCmds[1] = "cd"; 
-	ListOfOwnCmds[2] = "help"; 
-	ListOfOwnCmds[3] = "hello"; 
-
-	for (i = 0; i < NoOfOwnCmds; i++) { 
-		if (strcmp(parsed[0], ListOfOwnCmds[i]) == 0) { 
-			switchOwnArg = i + 1; 
-			break; 
-		} 
-	} 
-
-	switch (switchOwnArg) { 
-	case 1: 
-		printf("\nGoodbye\n"); 
-		exit(0); 
-	case 2: 
-		chdir(parsed[1]); 
-		return 1; 
-	case 3: 
-		openHelp(); 
-		return 1; 
-	case 4: 
-		username = getenv("USER"); 
-		printf("\nHello %s.\nMind that this is "
-			"not a place to play around."
-			"\nUse help to know more..\n", 
-			username); 
-		return 1; 
-	default: 
-		break; 
-	} 
-
-	return 0; 
-} 
-
-// function for finding pipe 
-int parsePipe(char* str, char** strpiped) 
+// Función para separar los comandos de una líne que utilice |
+void parse_pipe(char* str, char** strpiped) 
 { 
 	char delim[] = "|";
-	char *state = NULL;
+	char *status = NULL;
 			
-	strpiped[0] = strtok_r(str, delim, &state);
+	strpiped[0] = strtok_r(str, delim, &status);
 
-	strpiped[1] = strtok_r(NULL, delim, &state); 		
+	strpiped[1] = strtok_r(NULL, delim, &status); 		
 }
 
-// function for finding AND 
-int parseAND(char* str, char** strAND) 
+// Función para separar los comandos de una líne que utilice &&
+void parse_AND(char* str, char** strAND) 
 { 
 	char delim[] = "&&";
-	char *state = NULL;
+	char *status = NULL;
 			
-	strAND[0] = strtok_r(str, delim, &state);
+	strAND[0] = strtok_r(str, delim, &status);
 
-	strAND[1] = strtok_r(NULL, delim, &state); 	
+	strAND[1] = strtok_r(NULL, delim, &status);
 }
 
-// function for finding OR 
-void parseOR(char* str, char** strOR) 
+// Función para separar los comandos de una líne que utilice ||
+void parse_OR(char* str, char** strOR) 
 { 
 	char delim[] = "||";
-	char *state = NULL;
+	char *status = NULL;
 			
-	strOR[0] = strtok_r(str, delim, &state);
+	strOR[0] = strtok_r(str, delim, &status);
 
-	strOR[1] = strtok_r(NULL, delim, &state);
+	strOR[1] = strtok_r(NULL, delim, &status);
 	
 }
 
-// function for parsing command words 
-void parseSpace(char* str, char** parsed) 
+// ffuncion para "parsear" las palabras de una linea de comandos
+void parse_espacio(char* str, char** parsed) 
 { 
-	int i; 
+  int i; 
 
 	for (i = 0; i < MAXLIST; i++) { 
 		parsed[i] = strsep(&str, " "); 
@@ -348,146 +340,92 @@ void parseSpace(char* str, char** parsed)
 	} 
 } 
 
-int check_operation(char *str) {
-    if (strstr(str, "||") != NULL) {
-        // printf("Double Pipe (OR)\n");
+// Funcion que identifica el operador que se está utilizando en la linea de comando
+int identificar_operacion(char *str) {
+    if (strstr(str, "||") != NULL) {        
 		return 2;
-    } else if (strstr(str, "|") != NULL) {
-        // printf("Single Pipe\n");
+    } else if (strstr(str, "|") != NULL) {        
 		return 1;
-    } else if (strstr(str, "&&") != NULL) {
-        // printf("AND\n");
+    } else if (strstr(str, "&&") != NULL) {        
 		return 3;
-    } else {
-        // printf("No Pipe\n");
+    } else {       
 		return 0;
     }
 
 	return 0;
 }
 
-int processString(char* str, char** parsed, char** parsedpipe, char** parsedAND, char** parsedOR) 
+// Funcion que procesa el string dado como entrada
+int procesar_string(char* str, char** parsed, char** parsedOP) 
 { 
 
-	char* strpiped[2];
-	char* strAND[2];
-	char* strOR[2];
+    char **comillas[MAXLIST];
+	
+	char* strOP[2];
+	
 	int piped = 0, and = 0, or = 0; 
 
 	int op = 0; 
 
-	op = check_operation(str);		
+	op = identificar_operacion(str);	
 
 	switch (op)
 	{
 	case 1:
 		piped = 1;
-		parsePipe(str, strpiped);
-		parseSpace(strpiped[0], parsed); 
-		parseSpace(strpiped[1], parsedpipe);
+		parse_pipe(str, strOP);
+		parse_espacio(strOP[0], parsed);
+		parse_espacio(strOP[1], parsedOP);		
 		break;
 	case 2:
 		or = 2;
-		parseOR(str, strOR);		
-		parseSpace(strOR[0], parsed); 
-		parseSpace(strOR[1], parsedOR); 
+		parse_OR(str, strOP);
+		parse_espacio(strOP[0], parsed);
+		parse_espacio(strOP[1], parsedOP);	
 		break;
 	case 3:
 		and = 3;
-		parseAND(str, strAND);		
-		parseSpace(strAND[0], parsed); 
-		parseSpace(strAND[1], parsedAND);
+		parse_AND(str, strOP);	
+		parse_espacio(strOP[0], parsed);
+		parse_espacio(strOP[1], parsedOP);	
 		break;
 	default:
-		parseSpace(str, parsed);
+		parse_espacio(str, parsed);		
 		break;
 	}
-
-	// if (op == 1) { 
-	// 	piped = 1;
-	// 	printf("Es piped\n");
-	// 	parsePipe(str, strpiped);	
-	// 	printf("strpiped 0: %s\n", strpiped[0]);	
-	// 	printf("strpiped 1: %s\n", strpiped[1]);	
-	// 	parseSpace(strpiped[0], parsed); 
-	// 	parseSpace(strpiped[1], parsedpipe);
-	// 	for (int i = 0; i < 2; i++)
-	// 	{
-	// 		printf("parsed: %s\n", parsed[i]);
-	// 	}
-	// 	for (int i = 0; i < 2; i++)
-	// 	{
-	// 		printf("parsedAND: %s\n", parsedpipe[i]);
-	// 	} 
-
-	// } else if (op == 3) { 
-	// 	and = 3;
-	// 	printf("Es AND\n");
-	// 	parseAND(str, strAND);		
-	// 	// printf("strAND 0: %s\n", strAND[0]);	
-	// 	// printf("strAND 1: %s\n", strAND[1]);	
-	// 	parseSpace(strAND[0], parsed); 
-	// 	parseSpace(strAND[1], parsedAND);
-	// 	// for (int i = 0; i < 2; i++)
-	// 	// {
-	// 	// 	printf("parsed: %s\n", parsed[i]);
-	// 	// }
-	// 	// for (int i = 0; i < 2; i++)
-	// 	// {
-	// 	// 	printf("parsedAND: %s\n", parsedAND[i]);
-	// 	// }			 
-	// } else if (op == 2) {
-	// 	or = 2;
-	// 	printf("Es OR\n");
-	// 	parseOR(str, strOR);
-	// 	// printf("Es OR\n");
-	// 	parseSpace(strOR[0], parsed); 
-	// 	parseSpace(strOR[1], parsedOR); 
-	        
-	// } else {
-	// 	parseSpace(str, parsed);
-	// }
-
-	if (ownCmdHandler(parsed)) 
+	
+	if (manejador_comandos_propios(parsed)) 
 		return 0; 
 	else
 		return 1 + piped + and + or; 
-
 } 
 
 int main() 
 { 
 	char inputString[MAXCOM], *parsedArgs[MAXLIST]; 
-	char* parsedArgsPiped[MAXLIST]; 
-	char* parsedArgsAND[MAXLIST];
-	char* parsedArgsOR[MAXLIST];
+	char* parsedArgsOP[MAXLIST]; 	
 	
 	int execFlag = 0; 
 	init_shell(); 
 
 	while (1) { 
-		// print shell line 
-		printDir(); 
-		// take input 
-		if (takeInput(inputString)) 
+		
+		imprimir_dir(); 
+		
+		if (tomar_input(inputString)) 
 			continue; 
-		// process 
-		execFlag = processString(inputString, 
-		parsedArgs, parsedArgsPiped, parsedArgsAND, parsedArgsOR); 
-		// execflag returns zero if there is no command 
-		// or it is a builtin command, 
-		// 1 if it is a simple command. 
-		// 2 if it is including a pipe. 
-
-		// execute 
-		if (execFlag == 1) 
-			execArgs(parsedArgs); 
+		
+		execFlag = procesar_string(inputString, 
+		parsedArgs, parsedArgsOP); 	
+		
+		if (execFlag == 1)// No utiliza operador especial 
+			ejecutar_cmd(parsedArgs); 
 		if (execFlag == 2) //Pipe
-			execArgsPiped(parsedArgs, parsedArgsPiped);			
+			ejecutar_pipe(parsedArgs, parsedArgsOP);			
 		if (execFlag == 3) //OR			
-			execArgsOR(parsedArgs, parsedArgsOR); 		
+			ejecutar_OR(parsedArgs, parsedArgsOP); 		
 		if (execFlag == 4) //AND		
-			execArgsAND(parsedArgs, parsedArgsAND);
+			ejecutar_AND(parsedArgs, parsedArgsOP);
 	} 
 
 	return 0; 
